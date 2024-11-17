@@ -1,0 +1,149 @@
+import uiautomation as auto
+import time
+import re
+import json
+import requests
+from openai import OpenAI
+import win32gui
+import win32con
+import pyperclip
+import subprocess
+import os
+import winreg
+import ctypes
+import sys
+
+class FiddlerSetup:
+    def __init__(self):
+        self.fiddler_path = self.get_fiddler_path()
+        
+    def is_admin(self):
+        """检查是否具有管理员权限"""
+        try:
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except:
+            return False
+            
+    def get_fiddler_path(self):
+        """获取Fiddler安装路径"""
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Fiddler.exe")
+            path = winreg.QueryValue(key, None)
+            winreg.CloseKey(key)
+            return path
+        except:
+            return None
+            
+    def check_fiddler_installation(self):
+        """检查Fiddler是否已安装"""
+        return self.fiddler_path is not None and os.path.exists(self.fiddler_path)
+        
+    def check_fiddler_cert(self):
+        """检查Fiddler证书是否已安装"""
+        try:
+            import win32crypto
+            store = win32crypto.CertOpenSystemStore(0, "ROOT")
+            certs = win32crypto.CertEnumCertificatesInStore(store)
+            for cert in certs:
+                if "DO_NOT_TRUST_FiddlerRoot" in cert.get("FriendlyName", ""):
+                    return True
+            return False
+        except:
+            return False
+            
+    def configure_fiddler(self):
+        """配置Fiddler设置"""
+        if not self.is_admin():
+            # 请求管理员权限重启
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+            sys.exit()
+            
+        try:
+            # 配置Fiddler的注册表设置
+            key_path = r"Software\Microsoft\Fiddler2"
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE)
+            except:
+                key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+                
+            # 设置HTTPS解密
+            winreg.SetValueEx(key, "DecryptHTTPS", 0, winreg.REG_DWORD, 1)
+            # 设置忽略证书错误
+            winreg.SetValueEx(key, "IgnoreServerCertErrors", 0, winreg.REG_DWORD, 1)
+            
+            winreg.CloseKey(key)
+            return True
+        except Exception as e:
+            print(f"配置Fiddler时出错：{str(e)}")
+            return False
+
+class WeChatBot:
+    def __init__(self):
+        self.setup_fiddler()
+        self.client = OpenAI(
+            api_key="sk-I8E1gzKQsFmMkTqyrWCe1xVV0VchtdMNanuu3lZ6aePeLi7B",
+            base_url="https://api.moonshot.cn/v1"
+        )
+        
+    def setup_fiddler(self):
+        """设置和检查Fiddler"""
+        fiddler_setup = FiddlerSetup()
+        
+        # 检查Fiddler是否已安装
+        if not fiddler_setup.check_fiddler_installation():
+            print("请先安装Fiddler Classic！")
+            print("下载地址：https://www.telerik.com/download/fiddler")
+            sys.exit(1)
+            
+        # 检查证书
+        if not fiddler_setup.check_fiddler_cert():
+            print("正在配置Fiddler证书...")
+            if fiddler_setup.configure_fiddler():
+                print("Fiddler配置成功！")
+            else:
+                print("Fiddler配置失败，请手动配置！")
+                sys.exit(1)
+                
+    def capture_wechat_video_url(self):
+        """使用Fiddler抓取微信视频地址"""
+        try:
+            # 启动Fiddler
+            fiddler_process = subprocess.Popen([self.fiddler_setup.fiddler_path])
+            time.sleep(5)  # 等待Fiddler启动
+            
+            # 配置Fiddler规则
+            rules_script = """
+            static function OnBeforeResponse(oSession: Session) {
+                if (oSession.fullUrl.Contains(".mp4") || 
+                    oSession.fullUrl.Contains(".m3u8") || 
+                    oSession.oResponse.headers.ExistsAndContains("Content-Type", "video")) {
+                    FiddlerObject.log("Found Video URL: " + oSession.fullUrl);
+                }
+            }
+            """
+            
+            # 等待捕获视频URL
+            # 这里需要实现具体的URL捕获逻辑
+            video_url = self.wait_for_video_url()
+            
+            # 关闭Fiddler
+            fiddler_process.terminate()
+            return video_url
+            
+        except Exception as e:
+            return f"获取视频地址失败：{str(e)}"
+            
+    def wait_for_video_url(self):
+        """等待并获取视频URL"""
+        # 这里需要实现具体的等待逻辑
+        # 可以通过读取Fiddler的日志文件或者其他方式获取URL
+        pass
+
+    # ... (其余代码保持不变)
+
+if __name__ == "__main__":
+    print("正在初始化微信自动回复机器人...")
+    print("检查Fiddler配置...")
+    bot = WeChatBot()
+    print("初始化完成，开始运行...")
+    bot.run()
